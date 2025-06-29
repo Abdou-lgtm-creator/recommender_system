@@ -22,6 +22,7 @@ A personalized book recommender using **Neural Collaborative Filtering (NCF)** e
 
 ## 📁 Project Structure
 
+```text
 recommender_system/
 ├── app/
 │   └── app.py                 # Streamlit frontend for recommendations
@@ -36,7 +37,7 @@ recommender_system/
 ├── environment.yml            # Conda environment configuration
 ├── .gitignore                 # Git ignore rules
 └── README.md                  # Project documentation
-
+```
 ---
 
 ## 🔧 Environment Setup
