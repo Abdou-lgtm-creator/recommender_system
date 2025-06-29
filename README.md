@@ -1,4 +1,3 @@
-"""
 # 📚 NextChapter: LLM-Enhanced Book Recommendation System
 
 A personalized book recommender using **Neural Collaborative Filtering (NCF)** enhanced with **Large Language Model (LLM) embeddings** for semantically rich recommendations.
@@ -123,4 +122,3 @@ recommender_system/
     conda env remove -n recommender-env
 
 ---
-"""
