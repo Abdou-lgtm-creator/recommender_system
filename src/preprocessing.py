@@ -1,164 +1,127 @@
 """
 preprocessing.py
 
-This module prepares the dataset for training a Neural Collaborative Filtering (NCF) model.
-It performs the following key steps:
-- Loads raw ratings and book metadata
-- Filters users and books based on activity thresholds (25th percentile)
-- Encodes user_id and book_id into numeric indices
-- Constructs a sparse user-item interaction matrix
-- Saves mappings and processed files for use in model training and recommendation
-
-This preprocessing is optimized for implicit and explicit feedback systems using deep learning.
+Prepares the dataset for training a Neural Collaborative Filtering (NCF)
+model with LLM embeddings.
 """
 
-import pandas as pd
-import numpy as np
-from sklearn.preprocessing import LabelEncoder
-from scipy.sparse import csr_matrix, save_npz
 import os
+import numpy as np
+import pandas as pd
+from scipy.sparse import csr_matrix, save_npz
+from sklearn.preprocessing import LabelEncoder
 
 
 def load_dataset(ratings_path: str, books_path: str) -> tuple:
-    """
-    Load ratings and books dataset from CSV files.
-
-    Args:
-        ratings_path (str): Path to the ratings CSV file.
-        books_path (str): Path to the books CSV file.
-
-    Returns:
-        tuple: DataFrames of ratings and books.
-    """
-    ratings = pd.read_csv('../data/ratings.csv')
-    books = pd.read_csv('../data/books.csv')
+    """Load ratings and books dataset from CSV files."""
+    ratings = pd.read_csv(ratings_path)
+    books = pd.read_csv(books_path)
     return ratings, books
 
 
-def filter_ratings_by_quantile(ratings: pd.DataFrame, user_quantile: float = 0.25, book_quantile: float = 0.25) -> pd.DataFrame:
-    """
-    Filter out users and books below the specified quantile thresholds based on number of ratings.
+def filter_ratings_by_quantile(
+    ratings_data: pd.DataFrame,
+    user_quantile: float = 0.25,
+    book_quantile: float = 0.25,
+) -> pd.DataFrame:
+    """Filter out users and books below quantile thresholds."""
+    user_counts = ratings_data["user_id"].value_counts()
+    user_thresh = user_counts.quantile(user_quantile)
+    active_users = user_counts[user_counts >= user_thresh].index
+    filtered = ratings_data[ratings_data["user_id"].isin(active_users)]
 
-    Args:
-        ratings (DataFrame): Ratings data.
-        user_quantile (float): Quantile threshold for user filtering.
-        book_quantile (float): Quantile threshold for book filtering.
+    book_counts = filtered["book_id"].value_counts()
+    book_thresh = book_counts.quantile(book_quantile)
+    popular_books = book_counts[book_counts >= book_thresh].index
+    filtered = filtered[filtered["book_id"].isin(popular_books)]
 
-    Returns:
-        DataFrame: Filtered ratings data.
-    """
-    # Filter users
-    user_counts = ratings['user_id'].value_counts()
-    user_threshold = user_counts.quantile(user_quantile)
-    active_users = user_counts[user_counts >= user_threshold].index
-    ratings = ratings[ratings['user_id'].isin(active_users)]
+    print("Original users:", user_counts.shape[0])
+    print("Filtered users:", filtered["user_id"].nunique())
+    print(f"User threshold ({user_quantile}): {user_thresh:.2f}")
+    print("Original books:", book_counts.shape[0])
+    print("Filtered books:", filtered["book_id"].nunique())
+    print(f"Book threshold ({book_quantile}): {book_thresh:.2f}")
 
-    # Filter books
-    book_counts = ratings['book_id'].value_counts()
-    book_threshold = book_counts.quantile(book_quantile)
-    popular_books = book_counts[book_counts >= book_threshold].index
-    ratings = ratings[ratings['book_id'].isin(popular_books)]
-
-    # Print filtering summary
-    print(f"[INFO] Original users: {user_counts.shape[0]}")
-    print(f"[INFO] Filtered users: {ratings['user_id'].nunique()}")
-    print(
-        f"[INFO] User threshold (quantile {user_quantile}): {user_threshold}")
-
-    print(f"[INFO] Original books: {book_counts.shape[0]}")
-    print(f"[INFO] Filtered books: {ratings['book_id'].nunique()}")
-    print(
-        f"[INFO] Book threshold (quantile {book_quantile}): {book_threshold}")
-
-    return ratings
+    return filtered
 
 
-def encode_ids(ratings: pd.DataFrame) -> tuple:
-    """
-    Encode user_id and book_id into consecutive integer indices.
-
-    Args:
-        ratings (DataFrame): Ratings data with original IDs.
-
-    Returns:
-        tuple: Updated ratings, user LabelEncoder, book LabelEncoder
-    """
-    user_encoder = LabelEncoder()
-    book_encoder = LabelEncoder()
-
-    ratings['user_index'] = user_encoder.fit_transform(ratings['user_id'])
-    ratings['book_index'] = book_encoder.fit_transform(ratings['book_id'])
-
-    return ratings, user_encoder, book_encoder
+def encode_ids(flt_rating: pd.DataFrame) -> tuple:
+    """Encode user_id and book_id into integer indices."""
+    u_enc = LabelEncoder()
+    b_enc = LabelEncoder()
+    flt_rating["user_index"] = u_enc.fit_transform(flt_rating["user_id"])
+    flt_rating["book_index"] = b_enc.fit_transform(flt_rating["book_id"])
+    return flt_rating, u_enc, b_enc
 
 
-def build_user_item_matrix(ratings: pd.DataFrame) -> csr_matrix:
-    """
-    Construct the sparse user-item interaction matrix in CSR format.
-
-    Args:
-        ratings (DataFrame): Ratings data with encoded indices.
-
-    Returns:
-        csr_matrix: User-item sparse matrix.
-    """
-    return csr_matrix((ratings['rating'], (ratings['user_index'], ratings['book_index'])))
-
-
-def save_sparse_matrix(matrix: csr_matrix, path: str):
-    """
-    Save sparse matrix to .npz format.
-
-    Args:
-        matrix (csr_matrix): Sparse matrix to save.
-        path (str): Destination file path.
-    """
-    save_npz(path, matrix)
-    print(f"[SAVED] Sparse matrix → {path}")
+def build_user_item_matrix(encoded_ratings: pd.DataFrame) -> csr_matrix:
+    """Construct user-item interaction matrix in CSR format."""
+    return csr_matrix(
+        (
+            encoded_ratings["rating"],
+            (
+                encoded_ratings["user_index"],
+                encoded_ratings["book_index"],
+            ),
+        )
+    )
 
 
-def save_mapping(enc: LabelEncoder, name: str, path: str):
-    """
-    Save ID mapping (original → encoded) as a CSV.
+def save_sparse_matrix(sparse_matrix: csr_matrix, path: str):
+    """Save sparse matrix in .npz format."""
+    save_npz(path, sparse_matrix)
+    print("[SAVED] Sparse matrix saved to", path)
 
-    Args:
-        enc (LabelEncoder): Trained encoder.
-        name (str): 'user' or 'book'
-        path (str): Output file path.
-    """
-    mapping = pd.DataFrame({
-        f'{name}_original': enc.classes_,
-        f'{name}_index': range(len(enc.classes_))
-    })
+
+def save_mapping(encoder: LabelEncoder, name: str, path: str):
+    """Save ID mapping as CSV."""
+    mapping = pd.DataFrame(
+        {
+            f"{name}_original": encoder.classes_,
+            f"{name}_index": range(len(encoder.classes_)),
+        }
+    )
     mapping.to_csv(path, index=False)
-    print(f"[SAVED] {name.capitalize()} mapping → {path}")
+    print(f"[SAVED] {name.capitalize()} mapping saved to", path)
 
 
-# === Main Execution ===
-if __name__ == "__main__":
-    # Create output directory
-    os.makedirs("../data", exist_ok=True)
+def align_and_save_llm_embeddings(
+    books_path: str,
+    embeddings_path: str,
+    output_path: str,
+):
+    """Align and save LLM item embeddings with book order."""
+    books = pd.read_csv(books_path)
+    embeddings = np.load(embeddings_path)
+    assert len(books) == len(
+        embeddings
+    ), f"Mismatch: {len(books)} books vs {len(embeddings)} embeddings"
+    np.save(output_path, embeddings)
+    print("[SAVED] Aligned LLM embeddings saved to", output_path)
 
-    # Step 1: Load datasets
-    ratings, books = load_dataset("ratings.csv", "books.csv")
 
-    # Step 2: Filter by rating activity thresholds
-    ratings = filter_ratings_by_quantile(
-        ratings, user_quantile=0.25, book_quantile=0.25)
+def run_preprocessing():
+    """Run the preprocessing pipeline with LLM embeddings."""
+    ratings, _ = load_dataset("../data/ratings.csv", "../data/books.csv")
+    filtered = filter_ratings_by_quantile(ratings)
+    encoded, u_enc, b_enc = encode_ids(filtered)
+    matrix = build_user_item_matrix(encoded)
 
-    # Step 3: Encode user_id and book_id
-    ratings, user_enc, book_enc = encode_ids(ratings)
-
-    # Step 4: Build user-item sparse matrix
-    matrix = build_user_item_matrix(ratings)
-
-    # Step 5: Save artifacts for modeling
     save_sparse_matrix(matrix, "../data/ratings_matrix.npz")
-    save_mapping(user_enc, "user", "../data/user_mapping.csv")
-    save_mapping(book_enc, "book", "../data/book_mapping.csv")
-    ratings.to_csv("../data/filtered_ratings.csv", index=False)
-    print(f"[SAVED] Filtered and encoded ratings → data/filtered_ratings.csv")
+    save_mapping(u_enc, "user", "../data/user_mapping.csv")
+    save_mapping(b_enc, "book", "../data/book_mapping.csv")
+    encoded.to_csv("../data/flt_rating.csv", index=False)
 
-    # Shape of the matrix
+    align_and_save_llm_embeddings(
+        "../data/books.csv",
+        "../data/item_embeddings.npy",
+        "../data/item_embeddings_aligned.npy",
+    )
+
+    print("[SAVED] Filtered and encoded ratings saved.")
     print(f"[INFO] Matrix shape: {matrix.shape} (users × books)")
-    print("[DONE] Preprocessing complete!")
+    print("[DONE] Preprocessing complete.")
+
+
+if __name__ == "__main__":
+    run_preprocessing()
