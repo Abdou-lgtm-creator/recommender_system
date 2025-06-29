@@ -23,6 +23,7 @@ A personalized book recommender using **Neural Collaborative Filtering (NCF)** e
 ## 📁 Project Structure
 
 recommender_system/
+
 ├── app/
 │   └── app.py                 # Streamlit frontend for recommendations
 ├── data/                      # Raw and processed data and LLM embeddings
